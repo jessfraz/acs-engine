@@ -1,0 +1,44 @@
+{
+  "apiVersion": "vlabs",
+  "properties": {
+    "orchestratorProfile": {
+      "orchestratorType": "Kubernetes",
+      "orchestratorRelease": "1.8",
+      "kubernetesConfig": {
+        "networkPolicy": "azure",
+        "etcdVersion": "3.1.10",
+        "containerRuntime": "clear-containers",
+        "minimalAddOns": true
+      }
+    },
+    "masterProfile": {
+      "count": 1,
+      "dnsPrefix": "",
+      "vmSize": "Standard_D4s_v3",
+      "distro": "clear-linux"
+    },
+    "agentPoolProfiles": [
+      {
+        "name": "agent",
+        "count": 3,
+        "vmSize": "Standard_D4s_v3",
+        "availabilityProfile": "AvailabilitySet",
+        "distro": "clear-linux"
+      }
+    ],
+    "linuxProfile": {
+      "adminUsername": "azureuser",
+      "ssh": {
+        "publicKeys": [
+          {
+            "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDfH3r5KVh9N8On/8rJU6jbfXdzIBsCTRVi0fa+pyaylIN6d3oDsVVbOSpKCxbf3QFLr3vu2UARjy1Nf15/kmAasD6u43v8f4pi/Gq8lF/gMcd8ernrcfGJBa08OTmH2L5KsXi1KwMPvxybNSy5DXHVEdAFPMCQXlzu5FDiAb9O632ENOPrmKSNf5ocpIZ5J0B4mCaWWKMn30iGBl7VS5v5VYcSCz3wkPo4nxTesJ8EA42SCryugvRxlNwjxIG4uR64plOy3h8HeGB1TFlTDA1+If1A5+AHqPxKWi4icyD1fEUaQfCEyYlvgP6oWJaGtMTMfXi5uztZ2DsklcHpbOqn"
+          }
+        ]
+      }
+    },
+    "servicePrincipalProfile": {
+      "clientId": "",
+      "secret": ""
+    }
+  }
+}

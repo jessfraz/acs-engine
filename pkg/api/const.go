@@ -22,8 +22,9 @@ const (
 
 // the LinuxDistros supported by vlabs
 const (
-	Ubuntu Distro = "ubuntu"
-	RHEL   Distro = "rhel"
+	Ubuntu     Distro = "ubuntu"
+	RHEL       Distro = "rhel"
+	ClearLinux Distro = "clear-linux"
 )
 
 const (

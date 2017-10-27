@@ -25,8 +25,9 @@ const (
 
 // the LinuxDistros supported by vlabs
 const (
-	Ubuntu Distro = "ubuntu"
-	RHEL   Distro = "rhel"
+	Ubuntu     Distro = "ubuntu"
+	RHEL       Distro = "rhel"
+	ClearLinux Distro = "clear-linux"
 )
 
 // validation values
@@ -70,6 +71,11 @@ const (
 // Network policy
 var (
 	NetworkPolicyValues = [...]string{"", "none", "azure", "calico"}
+)
+
+// Container runtime
+var (
+	ContainerRuntimeValues = [...]string{"", "docker", "clear-containers"}
 )
 
 // Kubernetes configuration

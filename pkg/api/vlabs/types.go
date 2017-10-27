@@ -182,6 +182,7 @@ type KubernetesConfig struct {
 	DNSServiceIP                     string  `json:"dnsServiceIP,omitempty"`
 	ServiceCidr                      string  `json:"serviceCidr,omitempty"`
 	NetworkPolicy                    string  `json:"networkPolicy,omitempty"`
+	ContainerRuntime                 string  `json:"containerRuntime,omitempty"`
 	NonMasqueradeCidr                string  `json:"nonMasqueradeCidr,omitempty"`
 	MaxPods                          int     `json:"maxPods,omitempty"`
 	DockerBridgeSubnet               string  `json:"dockerBridgeSubnet,omitempty"`
@@ -205,6 +206,7 @@ type KubernetesConfig struct {
 	GCHighThreshold                  int     `json:"gchighthreshold,omitempty"`
 	GCLowThreshold                   int     `json:"gclowthreshold,omitempty"`
 	EtcdVersion                      string  `json:"etcdVersion,omitempty"`
+	MinimalAddOns                    bool    `json:"minimalAddOns,omitempty"`
 }
 
 // DcosConfig Configuration for DC/OS
@@ -366,6 +368,11 @@ func (m *MasterProfile) IsRHEL() bool {
 	return m.Distro == RHEL
 }
 
+// IsClearLinux returns true if the master specified a Clear Linux distro
+func (m *MasterProfile) IsClearLinux() bool {
+	return m.Distro == ClearLinux
+}
+
 // IsCustomVNET returns true if the customer brought their own VNET
 func (a *AgentPoolProfile) IsCustomVNET() bool {
 	return len(a.VnetSubnetID) > 0
@@ -384,6 +391,11 @@ func (a *AgentPoolProfile) IsLinux() bool {
 // IsRHEL returns true if the agent pool specified a RHEL distro
 func (a *AgentPoolProfile) IsRHEL() bool {
 	return a.OSType == Linux && a.Distro == RHEL
+}
+
+// IsClearLinux returns true if the agent pool specified a Clear Linux distro
+func (a *AgentPoolProfile) IsClearLinux() bool {
+	return a.OSType == Linux && a.Distro == ClearLinux
 }
 
 // IsAvailabilitySets returns true if the customer specified disks

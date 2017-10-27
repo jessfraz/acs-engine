@@ -1,0 +1,32 @@
+[Unit]
+Description=CRI-O
+Requires=docker.service
+After=docker.service
+
+[Service]
+Restart=always
+SuccessExitStatus=143
+ExecStart=/usr/bin/docker run \
+  --net=host \
+  --pid=host \
+  --ipc=host \
+  --privileged \
+  --rm \
+  --volume=/dev:/dev \
+  --volume=/var/run:/var/run:rw \
+  --volume=/run:/run:rw \
+  --volume=/var/lib:/var/lib:rw \
+  --volume=/var/log:/var/log:rw \
+  --volume=/etc/cni:/etc/cni:rw \
+  --volume=/etc/crio:/etc/crio:rw \
+  --volume=/etc/containers:/etc/containers:rw \
+  --volume=/etc/kubernetes:/etc/kubernetes:rw \
+  --volume=/usr/share:/usr/share:rw \
+  --volume=/usr/libexec:/usr/libexec:rw \
+  --volume=/opt:/opt:rw \
+  --volume=/usr/bin/cc-runtime:/usr/bin/cc-runtime:ro \
+  --volume=/usr/bin/qemu-lite-system-x86_64:/usr/bin/qemu-lite-system-x86_64:ro \
+    r.j3ss.co/crio
+
+[Install]
+WantedBy=multi-user.target

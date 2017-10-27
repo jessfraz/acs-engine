@@ -63,6 +63,14 @@ var (
 		ImageVersion:   "latest",
 	}
 
+	//DefaultClearLinuxOSImageConfig is the Clear Linux distribution.
+	DefaultClearLinuxOSImageConfig = AzureOSImageConfig{
+		ImageOffer:     "clear-linux-os",
+		ImageSku:       "containers",
+		ImagePublisher: "clear-linux-project",
+		ImageVersion:   "18620.0.0",
+	}
+
 	//AzureCloudSpec is the default configurations for global azure.
 	AzureCloudSpec = AzureEnvironmentSpecConfig{
 		//DockerSpecConfig specify the docker engine download repo
@@ -76,8 +84,9 @@ var (
 		},
 
 		OSImageConfig: map[api.Distro]AzureOSImageConfig{
-			api.Ubuntu: DefaultUbuntuImageConfig,
-			api.RHEL:   DefaultRHELOSImageConfig,
+			api.Ubuntu:     DefaultUbuntuImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxOSImageConfig,
 		},
 	}
 
@@ -96,7 +105,8 @@ var (
 				ImagePublisher: "Canonical",
 				ImageVersion:   "16.04.201701130",
 			},
-			api.RHEL: DefaultRHELOSImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxOSImageConfig,
 		},
 	}
 
@@ -109,8 +119,9 @@ var (
 			ResourceManagerVMDNSSuffix: "cloudapp.windowsazure.us",
 		},
 		OSImageConfig: map[api.Distro]AzureOSImageConfig{
-			api.Ubuntu: DefaultUbuntuImageConfig,
-			api.RHEL:   DefaultRHELOSImageConfig,
+			api.Ubuntu:     DefaultUbuntuImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxOSImageConfig,
 		},
 	}
 
@@ -145,7 +156,8 @@ var (
 				ImagePublisher: "Canonical",
 				ImageVersion:   "latest",
 			},
-			api.RHEL: DefaultRHELOSImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxOSImageConfig,
 		},
 	}
 )
@@ -196,6 +208,9 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 		}
 		if o.KubernetesConfig.NetworkPolicy == "" {
 			o.KubernetesConfig.NetworkPolicy = DefaultNetworkPolicy
+		}
+		if o.KubernetesConfig.ContainerRuntime == "" {
+			o.KubernetesConfig.ContainerRuntime = DefaultContainerRuntime
 		}
 		if o.KubernetesConfig.ClusterSubnet == "" {
 			if o.IsVNETIntegrated() {

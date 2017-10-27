@@ -36,10 +36,12 @@ ensureRunCommandCompleted()
     done
 }
 
-echo `date`,`hostname`, startscript>>/opt/m 
+echo `date`,`hostname`, startscript>>/opt/m
+
+mkdir -p /etc/kubernetes/manifests
 
 # A delay to start the kubernetes processes is necessary
-# if a reboot is required.  Otherwise, the agents will encounter issue: 
+# if a reboot is required.  Otherwise, the agents will encounter issue:
 # https://github.com/kubernetes/kubernetes/issues/41185
 if [ -f /var/run/reboot-required ]; then
     REBOOTREQUIRED=true
@@ -124,7 +126,7 @@ function ensureKubectl() {
     fi
     kubectlfound=1
     for i in {1..600}; do
-        if [ -e /usr/local/bin/kubectl ]
+        if [ -e /usr/bin/kubectl ]
         then
             kubectlfound=0
             break
@@ -153,6 +155,10 @@ function setMaxPods () {
 
 function setNetworkPlugin () {
     sed -i "s/^KUBELET_NETWORK_PLUGIN=.*/KUBELET_NETWORK_PLUGIN=${1}/" /etc/default/kubelet
+}
+
+function setKubeletOpts () {
+    sed -i "s#^KUBELET_OPTS=.*#KUBELET_OPTS=${1}#" /etc/default/kubelet
 }
 
 function setDockerOpts () {
@@ -189,6 +195,31 @@ function configAzureNetworkPolicy() {
     setDockerOpts " --volume=/etc/cni/:/etc/cni:ro --volume=/opt/cni/:/opt/cni:ro"
 }
 
+function configClearContainersRuntime() {
+	# Install virt containers
+	swupd bundle-add containers-virt
+
+    CNI_BIN_DIR=/opt/cni/bin
+    downloadUrl "https://github.com/containernetworking/plugins/releases/download/v0.6.0/cni-plugins-amd64-v0.6.0.tgz" | tar -xz -C $CNI_BIN_DIR
+    chown -R root:root $CNI_BIN_DIR
+    chmod -R 755 $CNI_BIN_DIR
+
+    # Enable CNI.
+    setNetworkPlugin cni
+	setKubeletOpts " --container-runtime=remote --container-runtime-endpoint=/var/run/crio.sock"
+    setDockerOpts " --volume /var/lib/containers:/var/lib/containers:rw --volume /etc/containers:/etc/containers:rw --volume /usr/share/containers:/usr/share/containers:rw --volume=/etc/cni/:/etc/cni:ro --volume=/opt/cni/:/opt/cni:ro"
+
+	docker run --rm r.j3ss.co/crio cat /etc/crio/seccomp.json > /etc/crio/seccomp.json
+
+    systemctlEnableAndCheck cc3-proxy
+    systemctlEnableAndCheck crio
+
+    # only start if a reboot is not required
+    if ! $REBOOTREQUIRED; then
+        systemctl restart crio
+    fi
+}
+
 # Configures Kubelet to use CNI and mount the appropriate hostpaths
 function configCalicoNetworkPolicy() {
     setNetworkPlugin cni
@@ -204,6 +235,12 @@ function configNetworkPolicy() {
         # No policy, defaults to kubenet.
         setNetworkPlugin kubenet
         setDockerOpts ""
+    fi
+}
+
+function configContainerRuntime() {
+    if [[ "${CONTAINER_RUNTIME}" = "clear-containers" ]]; then
+        configClearContainersRuntime
     fi
 }
 
@@ -285,9 +322,9 @@ function ensureApiserver() {
     fi
     kubernetesStarted=1
     for i in {1..600}; do
-        if [ -e /usr/local/bin/kubectl ]
+        if [ -e /usr/bin/kubectl ]
         then
-            /usr/local/bin/kubectl cluster-info
+            /usr/bin/kubectl cluster-info
             if [ "$?" = "0" ]
             then
                 echo "kubernetes started"
@@ -356,7 +393,7 @@ function writeKubeConfig() {
     chown $ADMINUSER:$ADMINUSER $KUBECONFIGFILE
     chmod 700 $KUBECONFIGDIR
     chmod 600 $KUBECONFIGFILE
-    
+
     # disable logging after secret output
     set +x
     echo "
@@ -385,25 +422,27 @@ users:
 }
 
 # master and node
-echo `date`,`hostname`, EnsureDockerStart>>/opt/m 
+echo `date`,`hostname`, EnsureDockerStart>>/opt/m
 ensureDocker
-echo `date`,`hostname`, configNetworkPolicyStart>>/opt/m 
+echo `date`,`hostname`, configNetworkPolicyStart>>/opt/m
 configNetworkPolicy
-echo `date`,`hostname`, setMaxPodsStart>>/opt/m 
+echo `date`,`hostname`, configContainerRuntimeStart>>/opt/m
+configContainerRuntime
+echo `date`,`hostname`, setMaxPodsStart>>/opt/m
 setMaxPods ${MAX_PODS}
 echo `date`,`hostname`, ensureKubeletStart>>/opt/m
 ensureKubelet
-echo `date`,`hostname`, extractKubctlStart>>/opt/m 
+echo `date`,`hostname`, extractKubctlStart>>/opt/m
 extractKubectl
-echo `date`,`hostname`, ensureJournalStart>>/opt/m 
+echo `date`,`hostname`, ensureJournalStart>>/opt/m
 ensureJournal
-echo `date`,`hostname`, ensureJournalDone>>/opt/m 
+echo `date`,`hostname`, ensureJournalDone>>/opt/m
 
 ensureRunCommandCompleted
-echo `date`,`hostname`, RunCmdCompleted>>/opt/m 
+echo `date`,`hostname`, RunCmdCompleted>>/opt/m
 
 # make sure walinuxagent doesn't get updated in the middle of running this script
-apt-mark hold walinuxagent
+[[ "${DISTRO}" == "clear-linux-os" ]] || apt-mark hold walinuxagent
 
 # master only
 if [[ ! -z "${APISERVER_PRIVATE_KEY}" ]]; then
@@ -420,7 +459,7 @@ sed -i "13i\echo 2dd1ce17-079e-403c-b352-a1921ee207ee > /sys/bus/vmbus/drivers/h
 
 # If APISERVER_PRIVATE_KEY is empty, then we are not on the master
 echo "Install complete successfully"
-apt-mark unhold walinuxagent
+[[ "${DISTRO}" == "clear-linux-os" ]] || apt-mark unhold walinuxagent
 
 if $REBOOTREQUIRED; then
   # wait 1 minute to restart node, so that the custom script extension can complete
@@ -428,4 +467,4 @@ if $REBOOTREQUIRED; then
   /bin/bash -c "shutdown -r 1 &"
 fi
 
-echo `date`,`hostname`, endscript>>/opt/m 
+echo `date`,`hostname`, endscript>>/opt/m

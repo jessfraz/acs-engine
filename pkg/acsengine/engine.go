@@ -74,6 +74,10 @@ const (
 	kubernetesParams              = "kubernetesparams.t"
 	kubernetesWinAgentVars        = "kuberneteswinagentresourcesvmas.t"
 	kubernetesKubeletService      = "kuberneteskubelet.service"
+	kubernetesCRIOService         = "kubernetescrio.service"
+	kubernetesETCDService         = "kubernetesetcd.service"
+	kubernetesCRIOConfig          = "kubernetescrio.conf"
+	kubernetesDockerScript        = "kubernetesdocker.sh"
 	masterOutputs                 = "masteroutputs.t"
 	masterParams                  = "masterparams.t"
 	swarmBaseFile                 = "swarmbase.t"
@@ -105,8 +109,12 @@ var kubernetesManifestYamls = map[string]string{
 
 var kubernetesAritfacts = map[string]string{
 	"MASTER_PROVISION_B64_GZIP_STR":            kubernetesMasterCustomScript,
+	"DOCKER_INSTALL_SCRIPT_SCRIPT":             kubernetesDockerScript,
 	"MASTER_GENERATE_PROXY_CERTS_B64_GZIP_STR": kubernetesMasterGenerateProxyCertsScript,
 	"KUBELET_SERVICE_B64_GZIP_STR":             kubernetesKubeletService,
+	"CRIO_SERVICE_B64_GZIP_STR":                kubernetesCRIOService,
+	"ETCD_SERVICE_B64_GZIP_STR":                kubernetesETCDService,
+	"CRIO_CONFIG_B64_GZIP_STR":                 kubernetesCRIOConfig,
 }
 
 var kubernetesAritfacts15 = map[string]string{
@@ -424,13 +432,23 @@ func ValidateDistro(cs *api.ContainerService) bool {
 		log.Fatalf("Orchestrator type %s not suported on RHEL Master", cs.Properties.OrchestratorProfile.OrchestratorType)
 		return false
 	}
+	// Check Clear Linux is only supported for Kubernetes
+	if cs.Properties.MasterProfile != nil && cs.Properties.MasterProfile.Distro == api.ClearLinux && cs.Properties.OrchestratorProfile.OrchestratorType != api.Kubernetes {
+		log.Fatalf("Orchestrator type %s not suported on Clear Linux Master", cs.Properties.OrchestratorProfile.OrchestratorType)
+		return false
+	}
 	// Check Agent distros
 	for _, agentProfile := range cs.Properties.AgentPoolProfiles {
 		if agentProfile.Distro == api.RHEL && cs.Properties.OrchestratorProfile.OrchestratorType != api.SwarmMode {
 			log.Fatalf("Orchestrator type %s not suported on RHEL Agent", cs.Properties.OrchestratorProfile.OrchestratorType)
 			return false
 		}
+		if agentProfile.Distro == api.ClearLinux && cs.Properties.OrchestratorProfile.OrchestratorType != api.Kubernetes {
+			log.Fatalf("Orchestrator type %s not suported on Clear Linux Agent", cs.Properties.OrchestratorProfile.OrchestratorType)
+			return false
+		}
 	}
+
 	return true
 }
 
@@ -459,10 +477,15 @@ func getParameters(cs *api.ContainerService, isClassicMode bool, generatorCode s
 
 	// Master Parameters
 	addValue(parametersMap, "location", location)
-	addValue(parametersMap, "osImageOffer", cloudSpecConfig.OSImageConfig[api.Ubuntu].ImageOffer)
-	addValue(parametersMap, "osImageSKU", cloudSpecConfig.OSImageConfig[api.Ubuntu].ImageSku)
-	addValue(parametersMap, "osImagePublisher", cloudSpecConfig.OSImageConfig[api.Ubuntu].ImagePublisher)
-	addValue(parametersMap, "osImageVersion", cloudSpecConfig.OSImageConfig[api.Ubuntu].ImageVersion)
+	distro := api.Ubuntu
+	if properties.MasterProfile != nil && properties.MasterProfile.Distro != "" {
+		distro = properties.MasterProfile.Distro
+	}
+	addValue(parametersMap, "osImageOffer", cloudSpecConfig.OSImageConfig[distro].ImageOffer)
+	addValue(parametersMap, "osImageSKU", cloudSpecConfig.OSImageConfig[distro].ImageSku)
+	addValue(parametersMap, "osImagePublisher", cloudSpecConfig.OSImageConfig[distro].ImagePublisher)
+	addValue(parametersMap, "osImageVersion", cloudSpecConfig.OSImageConfig[distro].ImageVersion)
+
 	addValue(parametersMap, "fqdnEndpointSuffix", cloudSpecConfig.EndpointConfig.ResourceManagerVMDNSSuffix)
 	addValue(parametersMap, "targetEnvironment", GetCloudTargetEnv(location))
 	addValue(parametersMap, "linuxAdminUsername", properties.LinuxProfile.AdminUsername)
@@ -574,6 +597,7 @@ func getParameters(cs *api.ContainerService, isClassicMode bool, generatorCode s
 		}
 		addValue(parametersMap, "dockerBridgeCidr", properties.OrchestratorProfile.KubernetesConfig.DockerBridgeSubnet)
 		addValue(parametersMap, "networkPolicy", properties.OrchestratorProfile.KubernetesConfig.NetworkPolicy)
+		addValue(parametersMap, "containerRuntime", properties.OrchestratorProfile.KubernetesConfig.ContainerRuntime)
 		addValue(parametersMap, "cniPluginsURL", cloudSpecConfig.KubernetesSpecConfig.CNIPluginsDownloadURL)
 		addValue(parametersMap, "vnetCniLinuxPluginsURL", cloudSpecConfig.KubernetesSpecConfig.VnetCNILinuxPluginsDownloadURL)
 		addValue(parametersMap, "vnetCniWindowsPluginsURL", cloudSpecConfig.KubernetesSpecConfig.VnetCNIWindowsPluginsDownloadURL)
@@ -809,6 +833,12 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 		},
 		"GetDataDisks": func(profile *api.AgentPoolProfile) string {
 			return getDataDisks(profile)
+		},
+		"IsClearLinuxMaster": func() bool {
+			if cs.Properties.MasterProfile == nil {
+				return false
+			}
+			return cs.Properties.MasterProfile.IsClearLinux()
 		},
 		"GetDCOSMasterCustomData": func() string {
 			masterProvisionScript := getDCOSMasterProvisionScript()
@@ -1267,7 +1297,7 @@ func makeExtensionScriptCommands(extension *api.Extension, extensionProfiles []*
 	extensionsParameterReference := fmt.Sprintf("parameters('%sParameters')", extensionProfile.Name)
 	scriptURL := getExtensionURL(extensionProfile.RootURL, extensionProfile.Name, extensionProfile.Version, extensionProfile.Script, extensionProfile.URLQuery)
 	scriptFilePath := fmt.Sprintf("/opt/azure/containers/extensions/%s/%s", extensionProfile.Name, extensionProfile.Script)
-	return fmt.Sprintf("- sudo /usr/bin/curl -o %s --create-dirs \"%s\" \n- sudo /bin/chmod 744 %s \n- sudo %s ',%s,' > /var/log/%s-output.log",
+	return fmt.Sprintf("\n- sudo /usr/bin/curl -o %s --create-dirs \"%s\" \n- sudo /bin/chmod 744 %s \n- sudo %s ',%s,' > /var/log/%s-output.log",
 		scriptFilePath, scriptURL, scriptFilePath, scriptFilePath, extensionsParameterReference, extensionProfile.Name)
 }
 

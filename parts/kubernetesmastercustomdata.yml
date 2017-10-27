@@ -1,11 +1,13 @@
 #cloud-config
 
+{{if not IsClearLinuxMaster}}
 packages:
 {{if not .OrchestratorProfile.IsCustomEtcdVersion}}
  - etcd
 {{end}}
  - jq
  - traceroute
+{{end}}
 
 write_files:
 - path: "/etc/systemd/system/docker.service.d/clear_mount_propagation_flags.conf"
@@ -31,8 +33,8 @@ write_files:
       "live-restore": true,
       "log-driver": "json-file",
       "log-opts":  {
-         "max-size": "50m",
-         "max-file": "5"
+          "max-size": "50m",
+          "max-file": "5"
       }
     }
 
@@ -131,6 +133,7 @@ write_files:
   content: !!binary |
     MASTER_ADDON_KUBE_PROXY_DAEMONSET_B64_GZIP_STR
 
+{{if not .OrchestratorProfile.KubernetesConfig.MinimalAddOns}}
 - path: /etc/kubernetes/addons/kubernetes-dashboard-deployment.yaml
   permissions: "0644"
   encoding: gzip
@@ -145,19 +148,20 @@ write_files:
   content: !!binary |
     MASTER_ADDON_HEAPSTER_DEPLOYMENT_B64_GZIP_STR
 
-- path: /etc/kubernetes/addons/azure-storage-classes.yaml
-  permissions: "0644"
-  encoding: gzip
-  owner: "root"
-  content: !!binary |
-    MASTER_ADDON_AZURE_STORAGE_CLASSES_B64_GZIP_STR
-
 - path: /etc/kubernetes/addons/kube-tiller-deployment.yaml
   permissions: "0644"
   encoding: gzip
   owner: "root"
   content: !!binary |
     MASTER_ADDON_TILLER_DEPLOYMENT_B64_GZIP_STR
+{{end}}
+
+- path: /etc/kubernetes/addons/azure-storage-classes.yaml
+  permissions: "0644"
+  encoding: gzip
+  owner: "root"
+  content: !!binary |
+    MASTER_ADDON_AZURE_STORAGE_CLASSES_B64_GZIP_STR
 
 {{if eq .OrchestratorProfile.KubernetesConfig.NetworkPolicy "calico"}}
 - path: /etc/kubernetes/addons/calico-daemonset.yaml
@@ -176,8 +180,7 @@ write_files:
     Description=Kubectl extraction
     Requires=docker.service
     After=docker.service
-    ConditionPathExists=!/usr/local/bin/kubectl
-
+    ConditionPathExists=!/usr/bin/kubectl
     [Service]
     TimeoutStartSec=0
     Restart=on-failure
@@ -185,9 +188,8 @@ write_files:
     ExecStartPre=/bin/mkdir -p /tmp/kubectldir
     ExecStartPre=/usr/bin/docker pull {{WrapAsVariable "kubernetesHyperkubeSpec"}}
     ExecStartPre=/usr/bin/docker run --rm -v /tmp/kubectldir:/opt/kubectldir {{WrapAsVariable "kubernetesHyperkubeSpec"}} /bin/bash -c "cp /hyperkube /opt/kubectldir/"
-    ExecStartPre=/bin/mv /tmp/kubectldir/hyperkube /usr/local/bin/kubectl
-    ExecStart=/bin/chmod a+x /usr/local/bin/kubectl
-
+    ExecStartPre=/bin/mv /tmp/kubectldir/hyperkube /usr/bin/kubectl
+    ExecStart=/bin/chmod a+x /usr/bin/kubectl
     [Install]
     WantedBy=multi-user.target
 
@@ -200,6 +202,7 @@ write_files:
     KUBELET_IMAGE={{WrapAsVariable "kubernetesHyperkubeSpec"}}
     KUBELET_NETWORK_PLUGIN=
     KUBELET_MAX_PODS=110
+    KUBELET_OPTS=
     DOCKER_OPTS=
     KUBELET_NODE_LABELS=kubernetes.io/role=master
     KUBELET_POD_INFRA_CONTAINER_IMAGE={{WrapAsVariable "kubernetesPodInfraContainerSpec"}}
@@ -231,26 +234,48 @@ write_files:
   content: !!binary |
     KUBELET_SERVICE_B64_GZIP_STR
 
+{{if eq .OrchestratorProfile.KubernetesConfig.ContainerRuntime "clear-containers"}}
+- path: "/etc/systemd/system/crio.service"
+  permissions: "0644"
+  encoding: gzip
+  owner: "root"
+  content: !!binary |
+    CRIO_SERVICE_B64_GZIP_STR
+
+- path: "/etc/crio/crio.conf"
+  permissions: "0755"
+  encoding: gzip
+  owner: "root"
+  content: !!binary |
+    CRIO_CONFIG_B64_GZIP_STR
+
+- path: "/etc/containers/policy.json"
+  permissions: "0644"
+  owner: "root"
+  content: |
+    {
+    "default": [{"type": "insecureAcceptAnything"}],
+    "transports": { "docker-daemon": { "": [{"type":"insecureAcceptAnything"}] } }
+    }
+{{end}}
+
 - path: "/opt/azure/containers/kubelet.sh"
   permissions: "0755"
   owner: "root"
   content: |
-    #!/bin/bash
+    #!/usr/bin/env bash
     set -e
-
-{{if gt .MasterProfile.Count 1}}
+    {{if gt .MasterProfile.Count 1}}
     # Azure does not support two LoadBalancers(LB) sharing the same nic and backend port.
     # As a workaround, the Internal LB(ILB) listens for apiserver traffic on port 4443 and the External LB(ELB) on port 443
     # This IPTable rule then redirects ILB traffic to port 443 in the prerouting chain
     iptables -t nat -A PREROUTING -p tcp --dport 4443 -j REDIRECT --to-port 443
-{{end}}
-
-{{if IsVNETIntegrated}}
+    {{end}}
+    {{if IsVNETIntegrated}}
     # SNAT outbound traffic from pods to destinations outside of VNET.
     iptables -t nat -A POSTROUTING -m iprange ! --dst-range 168.63.129.16 -m addrtype ! --dst-type local ! -d {{WrapAsVariable "vnetCidr"}} -j MASQUERADE
-{{end}}
-
-{{ if .HasAadProfile }}
+    {{end}}
+    {{ if .HasAadProfile }}
     OIDC_CLIENT_ID=spn:{{WrapAsVariable "aadServerAppId"}}
     VAR_AAD_TENANT_ID={{WrapAsVariable "aadTenantId"}}
     VAR_TENANT_ID={{WrapAsVariable "tenantId"}}
@@ -260,38 +285,36 @@ write_files:
     if [ "$VAR_TARGET_ENV" = "AzureChinaCloud" ]; then
         AAD_ISSUER_HOST="sts.chinacloudapi.cn"
     fi
-
-    OIDC_ISSUER_URL="https://$AAD_ISSUER_HOST/$AAD_TENANT_ID/" 
+    OIDC_ISSUER_URL="https://$AAD_ISSUER_HOST/$AAD_TENANT_ID/"
     perl -pi -e "s|--oidc-client-id=\K(?=\")|$OIDC_CLIENT_ID| || s|--oidc-issuer-url=\K(?=\")|$OIDC_ISSUER_URL|" "/etc/kubernetes/manifests/kube-apiserver.yaml"
-{{else}}
+    {{else}}
     sed -i "/--oidc-client-id\|--oidc-issuer-url\|--oidc-username-claim/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
-{{end}}
+    {{end}}
     sed -i "s|<kubernetesAddonManagerSpec>|{{WrapAsVariable "kubernetesAddonManagerSpec"}}|g" "/etc/kubernetes/manifests/kube-addon-manager.yaml"
     sed -i "s|<kubernetesHyperkubeSpec>|{{WrapAsVariable "kubernetesHyperkubeSpec"}}|g; s|<kubeServiceCidr>|{{WrapAsVariable "kubeServiceCidr"}}|g; s|<masterEtcdClientPort>|{{WrapAsVariable "masterEtcdClientPort"}}|g; s|<kubernetesAPIServerIP>|{{WrapAsVariable "kubernetesAPIServerIP"}}|g" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "s|<kubernetesHyperkubeSpec>|{{WrapAsVariable "kubernetesHyperkubeSpec"}}|g; s|<masterFqdnPrefix>|{{WrapAsVariable "masterFqdnPrefix"}}|g; s|<allocateNodeCidrs>|{{WrapAsVariable "allocateNodeCidrs"}}|g; s|<kubeClusterCidr>|{{WrapAsVariable "kubeClusterCidr"}}|g; s|<kubernetesCtrlMgrNodeMonitorGracePeriod>|{{WrapAsVariable "kubernetesCtrlMgrNodeMonitorGracePeriod"}}|g; s|<kubernetesCtrlMgrPodEvictionTimeout>|{{WrapAsVariable "kubernetesCtrlMgrPodEvictionTimeout"}}|g; s|<kubernetesCtrlMgrRouteReconciliationPeriod>|{{WrapAsVariable "kubernetesCtrlMgrRouteReconciliationPeriod"}}|g" "/etc/kubernetes/manifests/kube-controller-manager.yaml"
     sed -i "s|<kubernetesHyperkubeSpec>|{{WrapAsVariable "kubernetesHyperkubeSpec"}}|g" "/etc/kubernetes/manifests/kube-scheduler.yaml"
     sed -i "s|<kubernetesHyperkubeSpec>|{{WrapAsVariable "kubernetesHyperkubeSpec"}}|g; s|<kubeClusterCidr>|{{WrapAsVariable "kubeClusterCidr"}}|g" "/etc/kubernetes/addons/kube-proxy-daemonset.yaml"
     sed -i "s|<kubernetesKubeDNSSpec>|{{WrapAsVariable "kubernetesKubeDNSSpec"}}|g; s|<kubernetesDNSMasqSpec>|{{WrapAsVariable "kubernetesDNSMasqSpec"}}|g; s|<kubernetesExecHealthzSpec>|{{WrapAsVariable "kubernetesExecHealthzSpec"}}|g" "/etc/kubernetes/addons/kube-dns-deployment.yaml"
+{{if not .OrchestratorProfile.KubernetesConfig.MinimalAddOns}}
     sed -i "s|<kubernetesHeapsterSpec>|{{WrapAsVariable "kubernetesHeapsterSpec"}}|g; s|<kubernetesAddonResizerSpec>|{{WrapAsVariable "kubernetesAddonResizerSpec"}}|g" "/etc/kubernetes/addons/kube-heapster-deployment.yaml"
     sed -i "s|<kubernetesDashboardSpec>|{{WrapAsVariable "kubernetesDashboardSpec"}}|g" "/etc/kubernetes/addons/kubernetes-dashboard-deployment.yaml"
     sed -i "s|<kubernetesTillerSpec>|{{WrapAsVariable "kubernetesTillerSpec"}}|g" "/etc/kubernetes/addons/kube-tiller-deployment.yaml"
+{{end}}
     sed -i "s|<kubeDNSServiceIP>|{{WrapAsVariable "kubeDNSServiceIP"}}|g" "/etc/kubernetes/addons/kube-dns-deployment.yaml"
-
-{{if .OrchestratorProfile.KubernetesConfig.EnableRbac }}
+    {{if .OrchestratorProfile.KubernetesConfig.EnableRbac }}
     # If RBAC enabled then add parameters to API server and Controller manager configuration
     sed -i "s|<kubernetesEnableRbac>|--authorization-mode=RBAC|g" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "s|<kubernetesEnableRbac>|--use-service-account-credentials|g" "/etc/kubernetes/manifests/kube-controller-manager.yaml"
-{{else}}
+    {{else}}
     sed -i "/<kubernetesEnableRbac>/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "/<kubernetesEnableRbac>/d" "/etc/kubernetes/manifests/kube-controller-manager.yaml"
-{{end}}
-
-{{if eq .OrchestratorProfile.KubernetesConfig.NetworkPolicy "calico"}}
+    {{end}}
+    {{if eq .OrchestratorProfile.KubernetesConfig.NetworkPolicy "calico"}}
     # If Calico Policy enabled then update Cluster Cidr
     sed -i "s|<kubeClusterCidr>|{{WrapAsVariable "kubeClusterCidr"}}|g" "/etc/kubernetes/addons/calico-daemonset.yaml"
-{{end}}
-
-{{if not .OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs}}
+    {{end}}
+    {{if not .OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs}}
     sed -i "/requestheader-client-ca-file/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "/proxy-client-cert-file/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "/proxy-client-key-file/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
@@ -299,8 +322,50 @@ write_files:
     sed -i "/requestheader-extra-headers-prefix/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "/requestheader-group-headers/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
     sed -i "/requestheader-username-headers/d" "/etc/kubernetes/manifests/kube-apiserver.yaml"
-{{end}}
+    {{end}}
     sed -i "s|<etcdApiVersion>|{{ .OrchestratorProfile.GetAPIServerEtcdAPIVersion }}|g" "/etc/kubernetes/manifests/kube-apiserver.yaml"
+
+{{if IsClearLinuxMaster}}
+- path: "/opt/azure/containers/fix.sh"
+  permissions: "0755"
+  owner: "root"
+  content: |
+    #!/usr/bin/env bash
+    swupd update # update the package manager
+    tmpdir="$(mktemp -d)"
+    base64files=( "/etc/kubernetes/certs/ca.crt" "/etc/kubernetes/certs/apiserver.crt" "/etc/kubernetes/certs/client.crt" )
+    gzipfiles=( "/etc/kubernetes/manifests/kube-apiserver.yaml" "/etc/kubernetes/manifests/kube-controller-manager.yaml" "/etc/kubernetes/manifests/kube-scheduler.yaml" "/etc/kubernetes/manifests/kube-addon-manager.yaml" "/etc/systemd/system/kubelet.service" "/etc/systemd/system/crio.service" "/etc/systemd/system/etcd.service" "/etc/crio/crio.conf" "/opt/azure/containers/provision.sh" "/opt/azure/containers/mountetcd.sh" "/opt/azure/containers/docker.sh" )
+    # base64 decode the files
+    for f in "${base64files[@]}"; do
+      if [[ -f "$f" ]]; then
+        base=$(basename "$f")
+        cat "$f" | base64 -d > "${tmpdir}/${base}"
+        cat "${tmpdir}/${base}" > "$f"
+      fi
+    done
+    # gzip decode the files
+    for f in "${gzipfiles[@]}"; do
+      if [[ -f "$f" ]]; then
+        base=$(basename "$f")
+        cat "$f" | base64 -d | gzip -d > "${tmpdir}/${base}"
+        cat "${tmpdir}/${base}" > "$f"
+      fi
+    done
+    for f in /etc/kubernetes/addons/*.yaml; do
+      base=$(basename "$f")
+      cat "$f" | base64 -d | gzip -d > "${tmpdir}/${base}"
+      cat "${tmpdir}/${base}" > "$f"
+    done
+    rm -rf "$tmpdir"
+    /opt/azure/containers/run.sh
+{{end}}
+
+- path: "/opt/azure/containers/docker.sh"
+  permissions: "0755"
+  encoding: gzip
+  owner: "root"
+  content: !!binary |
+    INSTALL_DOCKER_SCRIPT
 
 - path: "/opt/azure/containers/provision.sh"
   permissions: "0744"
@@ -319,35 +384,18 @@ write_files:
 {{if .OrchestratorProfile.IsCustomEtcdVersion}}
 - path: "/etc/systemd/system/etcd.service"
   permissions: "0644"
+  encoding: gzip
   owner: "root"
-  content: |
-    [Unit]
-    Description=etcd - highly-available key value store
-    Documentation=https://github.com/coreos/etcd
-    Documentation=man:etcd
-    After=network.target
-    Wants=network-online.target
-    [Service]
-    Environment=DAEMON_ARGS=
-    Environment=ETCD_NAME=%H
-    Environment=ETCD_DATA_DIR=/var/lib/etcd/default
-    EnvironmentFile=-/etc/default/%p
-    Type=notify
-    User=etcd
-    PermissionsStartOnly=true
-    ExecStart=/usr/bin/etcd $DAEMON_ARGS
-    Restart=always
-    [Install]
-    WantedBy=multi-user.target
-    Alias=etcd.service
+  content: !!binary |
+    ETCD_SERVICE_B64_GZIP_STR
 
 - path: "/opt/azure/containers/setup-etcd.sh"
   permissions: "0744"
   owner: "root"
   content: |
-    #!/bin/bash
+    #!/usr/bin/env bash
     # if provisioning using any etcd version other than 2.5.2
-    # We download it and set it up here 
+    # We download it and set it up here
     set -x
     ETCD_VER=v{{ .OrchestratorProfile.KubernetesConfig.EtcdVersion }}
     DOWNLOAD_URL=https://acs-mirror.azureedge.net/github-coreos # we use mirror to github
@@ -359,40 +407,55 @@ write_files:
     usermod -p "$(head -c 32 /dev/urandom | base64)" "etcd"
     passwd -u "$etcd" > /dev/null
     # update systemctl and start service
-    systemctl daemon-reload 
+    systemctl daemon-reload
     systemctl enable etcd.service
 {{end}}
 
-runcmd: 
-{{ if .OrchestratorProfile.IsCustomEtcdVersion }}
-- /opt/azure/containers/setup-etcd.sh
+- path: "/opt/azure/containers/run.sh"
+  permissions: "0755"
+  owner: "root"
+  content: |
+    #!/usr/bin/env bash
+{{if .OrchestratorProfile.IsCustomEtcdVersion}}
+    /opt/azure/containers/setup-etcd.sh
 {{end}}
-- apt-mark hold walinuxagent {{GetKubernetesMasterPreprovisionYaml}}
-- /bin/echo DAEMON_ARGS=--name "{{WrapAsVerbatim "variables('masterVMNames')[copyIndex(variables('masterOffset'))]"}}" --initial-advertise-peer-urls "{{WrapAsVerbatim "variables('masterEtcdPeerURLs')[copyIndex(variables('masterOffset'))]"}}" --listen-peer-urls "{{WrapAsVerbatim "variables('masterEtcdPeerURLs')[copyIndex(variables('masterOffset'))]"}}" --advertise-client-urls "{{WrapAsVerbatim "variables('masterEtcdClientURLs')[copyIndex(variables('masterOffset'))]"}}" --listen-client-urls "{{WrapAsVerbatim "concat('http://127.0.0.1:', variables('masterEtcdClientPort'))"}}" --initial-cluster-token "k8s-etcd-cluster" --initial-cluster "{{WrapAsVerbatim "variables('masterEtcdClusterStates')[div(variables('masterCount'), 2)]"}} --data-dir "/var/lib/etcddisk"" --initial-cluster-state "new" | tee -a /etc/default/etcd
-- sudo /bin/chown -R etcd:etcd /var/lib/etcd/default
-- /opt/azure/containers/mountetcd.sh
-- sudo /bin/chown -R etcd:etcd /var/lib/etcddisk
-- systemctl stop etcd
-- sudo -u etcd rm -rf /var/lib/etcd/default
-- sudo /bin/sed -i s/Restart=on-abnormal/Restart=always/g /lib/systemd/system/etcd.service
-- systemctl daemon-reload
-- systemctl restart etcd
-- for i in $(seq 1 20); do curl --max-time 60 http://127.0.0.1:2379/v2/machines; [ $? -eq 0 ] && break || sleep 5; done
-- retrycmd_if_failure() { for i in 1 2 3 4 5; do $@; [ $? -eq 0  ] && break || sleep 5; done ; }
-- retrycmd_if_failure apt-get update
-- retrycmd_if_failure apt-get install -y apt-transport-https ca-certificates
-- retrycmd_if_failure curl --max-time 60 -fsSL https://aptdocker.azureedge.net/gpg | apt-key add -
-- echo "deb {{WrapAsVariable "dockerEngineDownloadRepo"}} ubuntu-xenial main" | sudo tee /etc/apt/sources.list.d/docker.list
-- "echo \"Package: docker-engine\nPin: version {{WrapAsVariable "dockerEngineVersion"}}\nPin-Priority: 550\n\" > /etc/apt/preferences.d/docker.pref"
-- retrycmd_if_failure apt-get update
-- retrycmd_if_failure apt-get install -y ebtables
-- retrycmd_if_failure apt-get install -y docker-engine
-- systemctl restart docker
-- mkdir -p /etc/kubernetes/manifests
-- usermod -aG docker {{WrapAsVariable "username"}}
-- /usr/lib/apt/apt.systemd.daily
+    echo DAEMON_ARGS=--name "{{WrapAsVerbatim "variables('masterVMNames')[copyIndex(variables('masterOffset'))]"}}" --initial-advertise-peer-urls "{{WrapAsVerbatim "variables('masterEtcdPeerURLs')[copyIndex(variables('masterOffset'))]"}}" --listen-peer-urls "{{WrapAsVerbatim "variables('masterEtcdPeerURLs')[copyIndex(variables('masterOffset'))]"}}" --advertise-client-urls "{{WrapAsVerbatim "variables('masterEtcdClientURLs')[copyIndex(variables('masterOffset'))]"}}" --listen-client-urls "{{WrapAsVerbatim "concat('http://127.0.0.1:', variables('masterEtcdClientPort'))"}}" --initial-cluster-token "k8s-etcd-cluster" --initial-cluster "{{WrapAsVerbatim "variables('masterEtcdClusterStates')[div(variables('masterCount'), 2)]"}} --data-dir "/var/lib/etcddisk"" --initial-cluster-state "new" >> /etc/default/etcd
+
+    if [[ -f /var/lib/etcd/default ]]; then
+      chown -R etcd:etcd /var/lib/etcd/default
+    fi
+
+    /opt/azure/containers/mountetcd.sh
+
+    chown -R etcd:etcd /var/lib/etcddisk
+
+    systemctl stop etcd
+
+    if [[ -f /var/lib/etcd/default ]]; then
+      sudo -u etcd rm -rf /var/lib/etcd/default
+    fi
+
+    if [[ -f /lib/systemd/system/etcd.service ]]; then
+      sed -i s/Restart=on-abnormal/Restart=always/g /lib/systemd/system/etcd.service
+    fi
+
+    systemctl daemon-reload
+    systemctl restart etcd
+
+    for i in $(seq 1 20); do curl --max-time 60 http://127.0.0.1:2379/v2/machines; [ $? -eq 0 ] && break || sleep 5; done
+
+{{if not IsClearLinuxMaster}}
+    /opt/azure/containers/docker.sh {{WrapAsVariable "dockerEngineDownloadRepo"}}
+{{end}}
+
 {{if .OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs}}
-- sudo bash /etc/kubernetes/generate-proxy-certs.sh
+    bash /etc/kubernetes/generate-proxy-certs.sh
 {{end}}
-- apt-mark unhold walinuxagent
-- touch /opt/azure/containers/runcmd.complete
+
+    usermod -aG docker {{WrapAsVariable "username"}}
+    touch /opt/azure/containers/runcmd.complete
+
+{{if not IsClearLinuxMaster}}
+runcmd: {{GetKubernetesMasterPreprovisionYaml}}
+- /opt/azure/containers/run.sh
+{{end}}

@@ -291,6 +291,42 @@ func Test_Properties_ValidateNetworkPolicy(t *testing.T) {
 	}
 }
 
+func Test_Properties_ValidateContainerRuntime(t *testing.T) {
+	p := &Properties{}
+	p.OrchestratorProfile = &OrchestratorProfile{}
+	p.OrchestratorProfile.OrchestratorType = Kubernetes
+
+	for _, policy := range ContainerRuntimeValues {
+		p.OrchestratorProfile.KubernetesConfig = &KubernetesConfig{}
+		p.OrchestratorProfile.KubernetesConfig.NetworkPolicy = policy
+		if err := p.validateContainerRuntime(); err != nil {
+			t.Errorf(
+				"should not error on containerRuntime=\"%s\"",
+				policy,
+			)
+		}
+	}
+
+	p.OrchestratorProfile.KubernetesConfig.ContainerRuntime = "not-existing"
+	if err := p.validateContainerRuntime(); err == nil {
+		t.Errorf(
+			"should error on invalid containerRuntime",
+		)
+	}
+
+	p.OrchestratorProfile.KubernetesConfig.ContainerRuntime = "clear-containers"
+	p.AgentPoolProfiles = []*AgentPoolProfile{
+		{
+			OSType: Windows,
+		},
+	}
+	if err := p.validateContainerRuntime(); err == nil {
+		t.Errorf(
+			"should error on clear-containers for windows clusters",
+		)
+	}
+}
+
 func Test_ServicePrincipalProfile_ValidateSecretOrKeyvaultSecretRef(t *testing.T) {
 
 	t.Run("ServicePrincipalProfile with secret should pass", func(t *testing.T) {
