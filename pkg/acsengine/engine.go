@@ -34,6 +34,7 @@ const (
 	kubernetesMasterCustomScript             = "k8s/kubernetesmastercustomscript.sh"
 	kubernetesMountetcd                      = "k8s/kubernetes_mountetcd.sh"
 	kubernetesMasterGenerateProxyCertsScript = "k8s/kubernetesmastergenerateproxycertscript.sh"
+	kubernetesDockerScript                   = "k8s/installdocker.sh"
 	kubernetesAgentCustomDataYaml            = "k8s/kubernetesagentcustomdata.yml"
 	kubeConfigJSON                           = "k8s/kubeconfig.json"
 	kubernetesWindowsAgentCustomDataPS1      = "k8s/kuberneteswindowssetup.ps1"
@@ -1141,6 +1142,9 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 		},
 		"GetKubernetesB64Provision": func() string {
 			return getBase64CustomScript(kubernetesMasterCustomScript)
+		},
+		"GetKubernetesB64DockerScript": func() string {
+			return getBase64CustomScript(kubernetesDockerScript)
 		},
 		"GetKubernetesB64Mountetcd": func() string {
 			return getBase64CustomScript(kubernetesMountetcd)

@@ -1,11 +1,16 @@
 #!/bin/bash
 
 set -x
-# Find distro name via ID value in releases files and upcase
-OS=$(cat /etc/*-release | grep ^ID= | tr -d 'ID="' | awk '{print toupper($0)}')
+if [[ ! -f "/etc/"*"-release" ]]; then
+	OS="CLEAR_LINUX"
+else
+	# Find distro name via ID value in releases files and upcase
+	OS=$(cat /etc/*-release | grep ^ID= | tr -d 'ID="' | awk '{print toupper($0)}')
+fi
 UBUNTU_OS_NAME="UBUNTU"
 RHEL_OS_NAME="RHEL"
 COREOS_OS_NAME="COREOS"
+CLEAR_LINUX_OS_NAME="CLEAR_LINUX"
 
 # Set default filepaths
 KUBECTL=/usr/local/bin/kubectl
@@ -64,12 +69,12 @@ fi
 
 if [[ ! -z "${MASTER_NODE}" ]]; then
     echo "executing master node provision operations"
-    
+
     useradd -U "etcd"
     usermod -p "$(head -c 32 /dev/urandom | base64)" "etcd"
     passwd -u "etcd"
     id "etcd"
-    
+
     echo `date`,`hostname`, beginGettingEtcdCerts>>/opt/m
     APISERVER_PRIVATE_KEY_PATH="/etc/kubernetes/certs/apiserver.key"
     touch "${APISERVER_PRIVATE_KEY_PATH}"

@@ -132,6 +132,49 @@ AGENT_ARTIFACTS_CONFIG_PLACEHOLDER
 
     exit 0
 
+{{if .IsClearLinux}}
+- path: "/opt/azure/containers/clear-linux-setup.sh"
+  permissions: "0744"
+  owner: "root"
+  content: |
+    #!/usr/bin/env bash
+    # update the package manager
+    swupd update
+    tmpdir="$(mktemp -d)"
+    base64files=( "/etc/kubernetes/certs/ca.crt" "/etc/kubernetes/certs/client.crt" )
+    gzipfiles=(  "/opt/azure/containers/provision.sh" "/opt/azure/containers/docker.sh" )
+    # base64 decode the files
+    for f in "${base64files[@]}"; do
+      if [[ -f "$f" ]]; then
+        base=$(basename "$f")
+        cat "$f" | base64 -d > "${tmpdir}/${base}"
+        cat "${tmpdir}/${base}" > "$f"
+      fi
+    done
+    # gzip decode the files
+    for f in "${gzipfiles[@]}"; do
+      if [[ -f "$f" ]]; then
+        base=$(basename "$f")
+        cat "$f" | base64 -d | gzip -d > "${tmpdir}/${base}"
+        cat "${tmpdir}/${base}" > "$f"
+      fi
+    done
+    for f in /etc/kubernetes/manifests/*.yaml; do
+      base=$(basename "$f")
+      cat "$f" | base64 -d | gzip -d > "${tmpdir}/${base}"
+      cat "${tmpdir}/${base}" > "$f"
+    done
+    rm -rf "$tmpdir"
+    /opt/azure/containers/provision-setup.sh
+{{end}}
+
+- path: "/opt/azure/containers/docker.sh"
+  permissions: "0744"
+  encoding: gzip
+  owner: "root"
+  content: !!binary |
+    {{WrapAsVariable "dockerScript"}}
+
 - path: "/opt/azure/containers/provision.sh"
   permissions: "0744"
   encoding: gzip
@@ -139,7 +182,6 @@ AGENT_ARTIFACTS_CONFIG_PLACEHOLDER
   content: !!binary |
     {{WrapAsVariable "provisionScript"}}
 
-{{if .IsCoreOS}}
 - path: "/opt/azure/containers/provision-setup.sh"
   permissions: "0755"
   owner: "root"
@@ -156,6 +198,7 @@ AGENT_ARTIFACTS_CONFIG_PLACEHOLDER
     # Simulates runcmd completion
     touch /opt/azure/containers/runcmd.complete
 
+{{if .IsCoreOS}}
 coreos:
   units:
     - name: start-provision-setup.service
@@ -176,41 +219,23 @@ runcmd:
 # the first arg is the number of retries, the second arg is the wait duration between two retries and the rest of the args are the cmd to run
 - set -x
 - retrycmd_if_failure() { retries=$1; wait=$2; shift && shift; for i in $(seq 1 $retries); do ${@}; [ $? -eq 0  ] && break || sleep $wait; done; echo Executed \"$@\" $i times; }
-- retrycmd_if_failure_no_stats() { retries=$1; wait=$2; shift && shift; for i in $(seq 1 $retries); do ${@}; [ $? -eq 0  ] && break || sleep $wait; done; }
-- apt_get_update() { for i in $(seq 1 100); do apt-get update 2>&1 | grep -x "[WE]:.*"; [ $? -ne 0  ] && break || sleep 1; done; echo Executed apt-get update $i times; }
+{{if not .IsClearLinux}}
 - retrycmd_if_failure 120 1 nc -zuw1 $(grep nameserver /etc/resolv.conf | cut -d \  -f 2) 53
-- retrycmd_if_failure 120 1 nc -zw1 aptdocker.azureedge.net 443
-- apt-mark hold walinuxagent{{GetKubernetesAgentPreprovisionYaml .}}
-- echo `date`,`hostname`, preaptupdate>>/opt/m
-- apt_get_update
-- echo `date`,`hostname`, postaptupdate>>/opt/m
-- retrycmd_if_failure 5 10 apt-get install -y apt-transport-https ca-certificates nfs-common
-- echo `date`,`hostname`, aptinstall>>/opt/m
+- echo "doing agent provision scripts if any..."{{GetKubernetesAgentPreprovisionYaml .}}
+{{end}}
 - systemctl enable rpcbind
 - systemctl enable rpc-statd
 - systemctl start rpcbind
 - systemctl start rpc-statd
-- echo `date`,`hostname`, predockerinstall>>/opt/m
-- retrycmd_if_failure_no_stats 180 1 curl -fsSL https://aptdocker.azureedge.net/gpg > /tmp/aptdocker.gpg
-- cat /tmp/aptdocker.gpg | apt-key add -
-- echo "deb {{WrapAsVariable "dockerEngineDownloadRepo"}} ubuntu-xenial main" | sudo tee /etc/apt/sources.list.d/docker.list
-- "echo \"Package: docker-engine\nPin: version {{WrapAsVariable "dockerEngineVersion"}}\nPin-Priority: 550\n\" > /etc/apt/preferences.d/docker.pref"
-- apt_get_update
-- retrycmd_if_failure 20 10 apt-get install -y ebtables docker-engine
-- touch /opt/azure/containers/dockerinstall.complete
-- echo "ExecStartPost=/sbin/iptables -P FORWARD ACCEPT" >> /etc/systemd/system/docker.service.d/exec_start.conf
-- systemctl daemon-reload
-- echo `date`,`hostname`, postdockerinstall>>/opt/m
+{{if not .IsClearLinux}}
+- /opt/azure/containers/docker.sh {{WrapAsVariable "dockerEngineDownloadRepo"}} {{WrapAsVariable "dockerEngineVersion"}}
+{{end}}
 - systemctl restart docker
 - mkdir -p /etc/kubernetes/manifests
 - usermod -aG docker {{WrapAsVariable "username"}}
 {{if IsNSeriesSKU .}}
   {{GetGPUDriversInstallScript .}}
 {{end}}
-- echo `date`,`hostname`, PRE-APT-SYSTEMD-DAILY>>/opt/m
-- /usr/lib/apt/apt.systemd.daily
-- echo `date`,`hostname`, POST-APT-SYSTEMD-DAILY>>/opt/m
-- apt-mark unhold walinuxagent
 - mkdir -p /opt/azure/containers && touch /opt/azure/containers/runcmd.complete
 - echo `date`,`hostname`, endruncmd>>/opt/m
 {{end}}

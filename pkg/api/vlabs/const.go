@@ -25,9 +25,10 @@ const (
 
 // the LinuxDistros supported by vlabs
 const (
-	Ubuntu Distro = "ubuntu"
-	RHEL   Distro = "rhel"
-	CoreOS Distro = "coreos"
+	Ubuntu     Distro = "ubuntu"
+	RHEL       Distro = "rhel"
+	CoreOS     Distro = "coreos"
+	ClearLinux Distro = "clear-linux"
 )
 
 // validation values

@@ -1,4 +1,4 @@
-{{if .MasterProfile.IsManagedDisks}} 
+{{if .MasterProfile.IsManagedDisks}}
     {
       "apiVersion": "[variables('apiVersionStorageManagedDisks')]",
       "location": "[variables('location')]",
@@ -81,20 +81,20 @@
         "securityRules": [
 {{if .HasWindows}}
           {
-            "name": "allow_rdp", 
+            "name": "allow_rdp",
             "properties": {
-              "access": "Allow", 
-              "description": "Allow RDP traffic to master", 
-              "destinationAddressPrefix": "*", 
-              "destinationPortRange": "3389-3389", 
-              "direction": "Inbound", 
-              "priority": 102, 
-              "protocol": "Tcp", 
-              "sourceAddressPrefix": "*", 
+              "access": "Allow",
+              "description": "Allow RDP traffic to master",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "3389-3389",
+              "direction": "Inbound",
+              "priority": 102,
+              "protocol": "Tcp",
+              "sourceAddressPrefix": "*",
               "sourcePortRange": "*"
             }
           },
-{{end}}       
+{{end}}
           {
             "name": "allow_ssh",
             "properties": {
@@ -258,7 +258,7 @@
                   "id": "[concat(variables('masterLbID'), '/backendAddressPools/', variables('masterLbBackendPoolName'))]"
                 }
 {{if gt .MasterProfile.Count 1}}
-                ,               
+                ,
                 {
                    "id": "[concat(variables('masterInternalLbID'), '/backendAddressPools/', variables('masterLbBackendPoolName'))]"
                 }
@@ -330,7 +330,7 @@
               "name": "ipconfig1",
               "properties": {
                 "loadBalancerBackendAddressPools": [
-  {{if gt .MasterProfile.Count 1}}                
+  {{if gt .MasterProfile.Count 1}}
                   {
                     "id": "[concat(variables('masterInternalLbID'), '/backendAddressPools/', variables('masterLbBackendPoolName'))]"
                   }
@@ -384,6 +384,13 @@
       "apiVersion": "[variables('apiVersionDefault')]",
       {{end}}
       "location": "[variables('location')]",
+{{if .MasterProfile.IsClearLinux}}
+      "plan": {
+        "name": "[variables('osImageSKU')]",
+        "publisher": "[variables('osImagePublisher')]",
+        "product": "[variables('osImageOffer')]"
+      },
+{{end}}
       "properties": {
           "osProfile": {
               "computerName": "[variables('jumpboxVMName')]",
@@ -426,7 +433,7 @@
                 },
                 "name": "[variables('jumpboxOSDiskName')]"
               },
-            {{end}}   
+            {{end}}
           "dataDisks": []
           },
           "networkProfile": {
@@ -608,6 +615,13 @@
         "poolName" : "master"
       },
       "location": "[variables('location')]",
+{{if .MasterProfile.IsClearLinux}}
+      "plan": {
+        "name": "[variables('osImageSKU')]",
+        "publisher": "[variables('osImagePublisher')]",
+        "product": "[variables('osImageOffer')]"
+      },
+{{end}}
       "name": "[concat(variables('masterVMNamePrefix'), copyIndex(variables('masterOffset')))]",
       {{if UseManagedIdentity}}
       "identity": {
@@ -680,7 +694,7 @@
 {{if ne .MasterProfile.OSDiskSizeGB 0}}
             ,"diskSizeGB": {{.MasterProfile.OSDiskSizeGB}}
 {{end}}
-            
+
           }
         }
       },
@@ -748,7 +762,7 @@
         "autoUpgradeMinorVersion": true,
         "settings": {},
         "protectedSettings": {
-          "commandToExecute": "[concat(variables('provisionScriptParametersCommon'),' ',variables('provisionScriptParametersMaster'), ' MASTER_INDEX=',copyIndex(variables('masterOffset')),' /usr/bin/nohup /bin/bash -c \"stat /opt/azure/containers/provision.complete > /dev/null 2>&1 || /bin/bash /opt/azure/containers/provision.sh >> /var/log/azure/cluster-provision.log 2>&1\"')]"
+          "commandToExecute": "[concat(variables('provisionScriptParametersCommon'),' ',variables('provisionScriptParametersMaster'), ' MASTER_INDEX=',copyIndex(variables('masterOffset')),' /usr/bin/nohup /bin/bash -c \"{{if .MasterProfile.IsClearLinux}}/usr/bin/swupd bundle-add os-cloudguest && /usr/bin/ucd --user-data-file /var/lib/waagent/CustomData && /bin/bash /opt/azure/containers/clear-linux-setup.sh && {{end}}stat /opt/azure/containers/provision.complete > /dev/null 2>&1 || /bin/bash /opt/azure/containers/provision.sh >> /var/log/azure/cluster-provision.log 2>&1\"')]"
         }
       }
     }{{WriteLinkedTemplatesForExtensions}}

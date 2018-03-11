@@ -455,6 +455,11 @@ func (m *MasterProfile) IsCoreOS() bool {
 	return m.Distro == CoreOS
 }
 
+// IsClearLinux returns true if the master specified a Clear Linux distro
+func (m *MasterProfile) IsClearLinux() bool {
+	return m.Distro == ClearLinux
+}
+
 // IsCustomVNET returns true if the customer brought their own VNET
 func (a *AgentPoolProfile) IsCustomVNET() bool {
 	return len(a.VnetSubnetID) > 0
@@ -478,6 +483,11 @@ func (a *AgentPoolProfile) IsRHEL() bool {
 // IsCoreOS returns true if the agent specified a CoreOS distro
 func (a *AgentPoolProfile) IsCoreOS() bool {
 	return a.OSType == Linux && a.Distro == CoreOS
+}
+
+// IsClearLinux returns true if the agent specified a Clear Linux distro
+func (a *AgentPoolProfile) IsClearLinux() bool {
+	return a.OSType == Linux && a.Distro == ClearLinux
 }
 
 // IsAvailabilitySets returns true if the customer specified disks

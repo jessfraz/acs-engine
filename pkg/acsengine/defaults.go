@@ -76,6 +76,14 @@ var (
 		ImageVersion:   "latest",
 	}
 
+	//DefaultClearLinuxImageConfig is the Clear Linux distribution.
+	DefaultClearLinuxImageConfig = AzureOSImageConfig{
+		ImageOffer:     "clear-linux-os",
+		ImageSku:       "containers",
+		ImagePublisher: "clear-linux-project",
+		ImageVersion:   "20230.0.0",
+	}
+
 	//AzureCloudSpec is the default configurations for global azure.
 	AzureCloudSpec = AzureEnvironmentSpecConfig{
 		//DockerSpecConfig specify the docker engine download repo
@@ -89,9 +97,10 @@ var (
 		},
 
 		OSImageConfig: map[api.Distro]AzureOSImageConfig{
-			api.Ubuntu: DefaultUbuntuImageConfig,
-			api.RHEL:   DefaultRHELOSImageConfig,
-			api.CoreOS: DefaultCoreOSImageConfig,
+			api.Ubuntu:     DefaultUbuntuImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.CoreOS:     DefaultCoreOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxImageConfig,
 		},
 	}
 
@@ -110,8 +119,9 @@ var (
 				ImagePublisher: "Canonical",
 				ImageVersion:   "16.04.201801050",
 			},
-			api.RHEL:   DefaultRHELOSImageConfig,
-			api.CoreOS: DefaultCoreOSImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.CoreOS:     DefaultCoreOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxImageConfig,
 		},
 	}
 
@@ -130,8 +140,9 @@ var (
 				ImagePublisher: "Canonical",
 				ImageVersion:   "latest",
 			},
-			api.RHEL:   DefaultRHELOSImageConfig,
-			api.CoreOS: DefaultCoreOSImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.CoreOS:     DefaultCoreOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxImageConfig,
 		},
 	}
 
@@ -171,8 +182,9 @@ var (
 				ImagePublisher: "Canonical",
 				ImageVersion:   "latest",
 			},
-			api.RHEL:   DefaultRHELOSImageConfig,
-			api.CoreOS: DefaultCoreOSImageConfig,
+			api.RHEL:       DefaultRHELOSImageConfig,
+			api.CoreOS:     DefaultCoreOSImageConfig,
+			api.ClearLinux: DefaultClearLinuxImageConfig,
 		},
 	}
 
