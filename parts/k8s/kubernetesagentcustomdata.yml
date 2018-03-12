@@ -15,7 +15,11 @@ write_files:
   content: |
     [Service]
     ExecStart=
+{{if .IsClearLinux}}
+    ExecStart=/usr/bin/dockerd -H fd:// --storage-driver=overlay2 --bip={{WrapAsVariable "dockerBridgeCidr"}}
+{{else}}
     ExecStart=/usr/bin/docker daemon -H fd:// --storage-driver=overlay2 --bip={{WrapAsVariable "dockerBridgeCidr"}}
+{{end}}
 
 - path: "/etc/docker/daemon.json"
   permissions: "0644"
@@ -165,7 +169,10 @@ AGENT_ARTIFACTS_CONFIG_PLACEHOLDER
       cat "${tmpdir}/${base}" > "$f"
     done
     rm -rf "$tmpdir"
-    /opt/azure/containers/provision-setup.sh
+
+    touch /opt/azure/containers/dockerinstall.complete;
+
+    /opt/azure/containers/provision.sh;
 {{end}}
 
 - path: "/opt/azure/containers/docker.sh"
@@ -182,6 +189,7 @@ AGENT_ARTIFACTS_CONFIG_PLACEHOLDER
   content: !!binary |
     {{WrapAsVariable "provisionScript"}}
 
+{{if .IsCoreOS}}
 - path: "/opt/azure/containers/provision-setup.sh"
   permissions: "0755"
   owner: "root"
@@ -198,7 +206,6 @@ AGENT_ARTIFACTS_CONFIG_PLACEHOLDER
     # Simulates runcmd completion
     touch /opt/azure/containers/runcmd.complete
 
-{{if .IsCoreOS}}
 coreos:
   units:
     - name: start-provision-setup.service
@@ -214,28 +221,30 @@ coreos:
 {{if not EnablePodSecurityPolicy}}
     sed -i "s|apparmor_parser|d|g" "/etc/systemd/system/kubelet.service"
 {{end}}
+# ALL commands here must end in an ";" so the cloud init on clear linux doesn't fail.
 runcmd:
-- echo `date`,`hostname`, startruncmd>>/opt/m
+- set -x;
+- echo `date`,`hostname`, startruncmd>>/opt/m;
+{{if .IsClearLinux}}
+- /opt/azure/containers/clear-linux-setup.sh;
+{{end}}
 # the first arg is the number of retries, the second arg is the wait duration between two retries and the rest of the args are the cmd to run
-- set -x
-- retrycmd_if_failure() { retries=$1; wait=$2; shift && shift; for i in $(seq 1 $retries); do ${@}; [ $? -eq 0  ] && break || sleep $wait; done; echo Executed \"$@\" $i times; }
+- retrycmd_if_failure() { retries=$1; wait=$2; shift && shift; for i in $(seq 1 $retries); do ${@}; [ $? -eq 0  ] && break || sleep $wait; done; echo Executed \"$@\" $i times; };
+- retrycmd_if_failure 120 1 nc -zuw1 $(grep nameserver /etc/resolv.conf | cut -d \  -f 2) 53;
+- echo "doing agent provision scripts if any...";{{GetKubernetesAgentPreprovisionYaml .}};
+- systemctl enable rpcbind;
+- systemctl enable rpc-statd;
+- systemctl start rpcbind;
+- systemctl start rpc-statd;
 {{if not .IsClearLinux}}
-- retrycmd_if_failure 120 1 nc -zuw1 $(grep nameserver /etc/resolv.conf | cut -d \  -f 2) 53
-- echo "doing agent provision scripts if any..."{{GetKubernetesAgentPreprovisionYaml .}}
+- /opt/azure/containers/docker.sh {{WrapAsVariable "dockerEngineDownloadRepo"}} {{WrapAsVariable "dockerEngineVersion"}};
 {{end}}
-- systemctl enable rpcbind
-- systemctl enable rpc-statd
-- systemctl start rpcbind
-- systemctl start rpc-statd
-{{if not .IsClearLinux}}
-- /opt/azure/containers/docker.sh {{WrapAsVariable "dockerEngineDownloadRepo"}} {{WrapAsVariable "dockerEngineVersion"}}
-{{end}}
-- systemctl restart docker
-- mkdir -p /etc/kubernetes/manifests
-- usermod -aG docker {{WrapAsVariable "username"}}
+- systemctl restart docker;
+- mkdir -p /etc/kubernetes/manifests;
+- usermod -aG docker {{WrapAsVariable "username"}};
 {{if IsNSeriesSKU .}}
-  {{GetGPUDriversInstallScript .}}
+  {{GetGPUDriversInstallScript .}};
 {{end}}
-- mkdir -p /opt/azure/containers && touch /opt/azure/containers/runcmd.complete
-- echo `date`,`hostname`, endruncmd>>/opt/m
+- mkdir -p /opt/azure/containers && touch /opt/azure/containers/runcmd.complete;
+- echo `date`,`hostname`, endruncmd>>/opt/m;
 {{end}}

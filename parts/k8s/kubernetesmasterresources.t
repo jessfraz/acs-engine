@@ -762,7 +762,7 @@
         "autoUpgradeMinorVersion": true,
         "settings": {},
         "protectedSettings": {
-          "commandToExecute": "[concat(variables('provisionScriptParametersCommon'),' ',variables('provisionScriptParametersMaster'), ' MASTER_INDEX=',copyIndex(variables('masterOffset')),' /usr/bin/nohup /bin/bash -c \"{{if .MasterProfile.IsClearLinux}}/usr/bin/swupd bundle-add os-cloudguest && /usr/bin/ucd --user-data-file /var/lib/waagent/CustomData && /bin/bash /opt/azure/containers/clear-linux-setup.sh && {{end}}stat /opt/azure/containers/provision.complete > /dev/null 2>&1 || /bin/bash /opt/azure/containers/provision.sh >> /var/log/azure/cluster-provision.log 2>&1\"')]"
+          "commandToExecute": "[concat(variables('provisionScriptParametersCommon'),' ',variables('provisionScriptParametersMaster'), ' MASTER_INDEX=',copyIndex(variables('masterOffset')),' /usr/bin/nohup /bin/bash -c \"{{if .MasterProfile.IsClearLinux}}/usr/bin/kill $(/usr/bin/pidof swupd) && /usr/bin/swupd bundle-add os-cloudguest && /usr/bin/ucd --user-data-file /var/lib/waagent/CustomData{{else}}stat /opt/azure/containers/provision.complete > /dev/null 2>&1 || /bin/bash /opt/azure/containers/provision.sh{{end}} >> /var/log/azure/cluster-provision.log 2>&1\"')]"
         }
       }
     }{{WriteLinkedTemplatesForExtensions}}

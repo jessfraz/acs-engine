@@ -271,7 +271,7 @@
         "autoUpgradeMinorVersion": true,
         "settings": {},
         "protectedSettings": {
-          "commandToExecute": "[concat(variables('provisionScriptParametersCommon'),' /usr/bin/nohup /bin/bash -c \"{{if .IsClearLinux}}/usr/bin/swupd bundle-add os-cloudguest && /usr/bin/ucd --user-data-file /var/lib/waagent/CustomData && /bin/bash /opt/azure/containers/clear-linux-setup.sh && {{end}}/bin/bash /opt/azure/containers/provision.sh >> /var/log/azure/cluster-provision.log 2>&1\"')]"
+          "commandToExecute": "[concat(variables('provisionScriptParametersCommon'),' /usr/bin/nohup /bin/bash -c \"{{if .IsClearLinux}}/usr/bin/kill $(/usr/bin/pidof swupd) && /usr/bin/swupd bundle-add os-cloudguest && /usr/bin/ucd --user-data-file /var/lib/waagent/CustomData{{else}}/bin/bash /opt/azure/containers/provision.sh{{end}} >> /var/log/azure/cluster-provision.log 2>&1\"')]"
         }
       }
     }
