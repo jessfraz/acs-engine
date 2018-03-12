@@ -29,6 +29,10 @@
 			"location": "eastus"
 		},
 		{
+			"cluster_definition": "clear-linux/kubernetes-clear-linux.json",
+			"location": "eastus"
+		},
+		{
 			"cluster_definition": "vnet/kubernetesvnet.json",
 			"location": "westus2"
 		}
