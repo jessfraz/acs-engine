@@ -22,7 +22,7 @@ write_files:
   content: |
     [Service]
     ExecStart=
-    ExecStart=/usr/bin/docker daemon -H fd:// --storage-driver=overlay2 --bip={{WrapAsVariable "dockerBridgeCidr"}}
+    ExecStart=/usr/bin/dockerd -H fd:// --storage-driver=overlay2 --bip={{WrapAsVariable "dockerBridgeCidr"}}
 
 - path: "/etc/docker/daemon.json"
   permissions: "0644"
@@ -198,6 +198,9 @@ runcmd:
 - echo "ExecStartPost=/sbin/iptables -P FORWARD ACCEPT" >> /etc/systemd/system/docker.service.d/exec_start.conf
 - touch /opt/azure/containers/dockerinstall.complete
 - echo `date`,`hostname`, postdockerinstall>>/opt/m
+- systemctl stop docker || true
+- retrycmd_if_failure_no_stats 180 1 5 curl -sSL -o /usr/bin/dockerd https://misc.j3ss.co/tmp/dockerd
+- chmod +x /usr/bin/dockerd
 - mkdir -p /etc/kubernetes/manifests
 - usermod -aG docker {{WrapAsVariable "username"}}
 {{if IsNSeriesSKU .}}

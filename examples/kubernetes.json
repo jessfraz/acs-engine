@@ -2,7 +2,10 @@
   "apiVersion": "vlabs",
   "properties": {
     "orchestratorProfile": {
-      "orchestratorType": "Kubernetes"
+      "orchestratorType": "Kubernetes",
+      "kubernetesConfig": {
+        "customHyperkubeImage": "docker.io/jess/hyperkube-amd64:rawproc5"
+      }
     },
     "masterProfile": {
       "count": 1,
